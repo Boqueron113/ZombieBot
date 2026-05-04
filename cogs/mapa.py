@@ -1,12 +1,9 @@
 import discord
 from discord.ext import commands
 import random
-from game_data import ZONAS, ZOMBIES, ITEMS, EVENTOS_ALEATORIOS
+from game_data import ZONAS, ZOMBIES, ITEMS, EVENTOS_ALEATORIOS, DROPS_MAPAS_SECRETOS
 from base_data import ESTRUCTURAS
 
-# ── IMÁGENES POR ZONA ────────────────────────────────────────────────────────
-# Cada zona tiene varias imágenes — se elige una al azar cada vez que explores
-# para que no se repita siempre la misma. Añade o cambia URLs a tu gusto.
 IMAGENES_ZONAS = {
     "refugio": [
         "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80",
@@ -43,68 +40,128 @@ IMAGENES_ZONAS = {
         "https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=800&q=80",
         "https://images.unsplash.com/photo-1604076913837-52ab5629fbc9?w=800&q=80",
     ],
+    # Zonas secretas
+    "bunker": [
+        "https://images.unsplash.com/photo-1608501078713-8e445a709b39?w=800&q=80",
+        "https://images.unsplash.com/photo-1587382668141-f3ca17e69b19?w=800&q=80",
+        "https://images.unsplash.com/photo-1518709414768-a88981a4515d?w=800&q=80",
+    ],
+    "base_militar": [
+        "https://images.unsplash.com/photo-1580901368919-7738efb0f87e?w=800&q=80",
+        "https://images.unsplash.com/photo-1533430803441-4e96867bc4c8?w=800&q=80",
+        "https://images.unsplash.com/photo-1547483238-f400e65ccd56?w=800&q=80",
+    ],
+    "laboratorio": [
+        "https://images.unsplash.com/photo-1576086213369-97a306d36557?w=800&q=80",
+        "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=800&q=80",
+        "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=800&q=80",
+    ],
+    "aeropuerto": [
+        "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80",
+        "https://images.unsplash.com/photo-1544098485-2a2f6dbe1f20?w=800&q=80",
+        "https://images.unsplash.com/photo-1530521954074-e64f6810b32d?w=800&q=80",
+    ],
 }
 
 class Mapa(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def _jugador_tiene_item(self, jugador, item_id):
+        return jugador["inventario"].get(item_id, 0) > 0
+
     @commands.command(name="mapa")
     async def mapa(self, ctx):
         """Muestra el mapa de zonas disponibles"""
         db = self.bot.db
         jugador = db.get_jugador(ctx.author.id)
+        nivel_jugador = jugador["nivel"] if jugador else 1
+        inv = jugador["inventario"] if jugador else {}
 
         embed = discord.Embed(
             title="🗺️ MAPA DEL APOCALIPSIS",
-            description="Zonas disponibles para explorar. Elige bien, la muerte es permanente.",
+            description="Zonas disponibles para explorar. Las zonas 🔐 requieren un mapa especial.",
             color=0x2c3e50
         )
 
-        nivel_jugador = jugador["nivel"] if jugador else 1
+        zonas_normales = []
+        zonas_secretas = []
 
         for zona_id, zona in ZONAS.items():
+            requiere = zona.get("requiere_item")
+            if requiere:
+                zonas_secretas.append((zona_id, zona))
+            else:
+                zonas_normales.append((zona_id, zona))
+
+        # Zonas normales
+        for zona_id, zona in zonas_normales:
             peligro_str = "🟢 Seguro" if zona["peligro"] == 0 else "⚠️" * min(zona["peligro"], 5)
             accesible = nivel_jugador >= zona["nivel_min"]
             bloqueo = "" if accesible else f" *(Nivel {zona['nivel_min']} requerido)*"
             recursos_str = ", ".join(zona["recursos"]) if zona["recursos"] else "Ninguno"
-
             embed.add_field(
                 name=f"{zona['emoji']} {zona['nombre']}{bloqueo}",
                 value=(
                     f"*{zona['descripcion']}*\n"
-                    f"Peligro: {peligro_str}\n"
-                    f"Recursos: `{recursos_str}`\n"
-                    f"Comando: `!explorar {zona_id}`"
+                    f"Peligro: {peligro_str} | Recursos: `{recursos_str}`\n"
+                    f"`!explorar {zona_id}`"
                 ),
                 inline=False
             )
 
-        # Imagen del mapa general — paisaje post-apocalíptico
+        # Zonas secretas
+        embed.add_field(
+            name="━━━━━━━━━━━━━━━━━━━━━━━",
+            value="**🔐 ZONAS SECRETAS** — Requieren mapa especial",
+            inline=False
+        )
+
+        for zona_id, zona in zonas_secretas:
+            requiere = zona["requiere_item"]
+            tiene_mapa = inv.get(requiere, 0) > 0
+            item_mapa = ITEMS.get(requiere, {})
+
+            if tiene_mapa:
+                peligro_str = "⚠️" * min(zona["peligro"], 5)
+                recursos_str = ", ".join(zona["recursos"])
+                embed.add_field(
+                    name=f"{zona['emoji']} {zona['nombre']} ✅ DESBLOQUEADA",
+                    value=(
+                        f"*{zona['descripcion']}*\n"
+                        f"Peligro: {peligro_str} | Recursos: `{recursos_str}`\n"
+                        f"`!explorar {zona_id}`"
+                    ),
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name=f"❓ Zona Desconocida",
+                    value=(
+                        f"*Localización sin confirmar. Necesitas:* {item_mapa.get('emoji','📜')} **{item_mapa.get('nombre','Mapa Secreto')}**\n"
+                        f"*Búscalo explorando zonas peligrosas.*"
+                    ),
+                    inline=False
+                )
+
         embed.set_image(url="https://images.unsplash.com/photo-1590073242678-70ee3fc28e8e?w=800&q=80")
-        embed.set_footer(text="💡 Usa !explorar <zona> para explorar • !ubicacion para ver dónde estás")
+        embed.set_footer(text="💡 !explorar <zona> para explorar • Los mapas secretos caen en zonas de alto peligro")
         await ctx.send(embed=embed)
 
     @commands.command(name="ubicacion", aliases=["donde"])
     async def ubicacion(self, ctx):
-        """Muestra tu ubicación actual"""
         db = self.bot.db
         jugador = db.get_jugador(ctx.author.id)
-
         if not jugador:
             await ctx.send("❌ Usa `!crear` para comenzar.")
             return
-
         zona_id = jugador["zona"]
         zona = ZONAS.get(zona_id, ZONAS["refugio"])
-
         embed = discord.Embed(
-            title=f"📍 Ubicación actual",
+            title="📍 Ubicación actual",
             description=f"Estás en: **{zona['nombre']}**\n*{zona['descripcion']}*",
             color=zona["color"]
         )
-
-        # Imagen de la zona actual
         imagen = random.choice(IMAGENES_ZONAS.get(zona_id, IMAGENES_ZONAS["refugio"]))
         embed.set_image(url=imagen)
         embed.set_footer(text=f"Usa !explorar {zona_id} para buscar recursos o zombies")
@@ -119,11 +176,9 @@ class Mapa(commands.Cog):
         if not jugador:
             await ctx.send("❌ Usa `!crear` para comenzar.")
             return
-
         if jugador["estado"] == "muerto":
             await ctx.send("💀 Estás muerto. No puedes explorar.\nUsa `!revivir` si está disponible.")
             return
-
         if jugador["vida"] <= 0:
             await ctx.send("❤️ No tienes suficiente vida para explorar. Cúrate primero con `!curar`.")
             return
@@ -139,6 +194,7 @@ class Mapa(commands.Cog):
 
         zona = ZONAS[zona_id]
 
+        # ── Verificar nivel mínimo ────────────────────────────
         if jugador["nivel"] < zona["nivel_min"]:
             await ctx.send(
                 f"❌ Necesitas **Nivel {zona['nivel_min']}** para explorar **{zona['nombre']}**.\n"
@@ -146,10 +202,26 @@ class Mapa(commands.Cog):
             )
             return
 
+        # ── Verificar mapa secreto ────────────────────────────
+        requiere_item = zona.get("requiere_item")
+        if requiere_item and not self._jugador_tiene_item(jugador, requiere_item):
+            item_data = ITEMS.get(requiere_item, {})
+            embed = discord.Embed(
+                title="🔐 Zona Bloqueada",
+                description=(
+                    f"Esta zona está oculta en el mapa.\n\n"
+                    f"Necesitas: {item_data.get('emoji','📜')} **{item_data.get('nombre','Mapa Secreto')}** para acceder.\n\n"
+                    f"*Explora zonas de alto peligro para encontrarlo como drop raro.*"
+                ),
+                color=0x4a235a
+            )
+            await ctx.send(embed=embed)
+            return
+
         # Mover jugador a la zona
         db.update_jugador(ctx.author.id, zona=zona_id)
 
-        # ── Hospital base: curación automática al regresar al refugio ──
+        # ── Hospital base: curación automática al refugio ─────
         if zona_id == 'refugio':
             base = db.get_base(ctx.author.id)
             if base:
@@ -167,7 +239,7 @@ class Mapa(commands.Cog):
             color=zona["color"]
         )
 
-        # ── Imagen aleatoria de la zona ────────────────────────
+        # Imagen de la zona
         imagen_zona = random.choice(IMAGENES_ZONAS.get(zona_id, IMAGENES_ZONAS["refugio"]))
         embed.set_image(url=imagen_zona)
 
@@ -182,14 +254,12 @@ class Mapa(commands.Cog):
                 db.add_item_inventario(ctx.author.id, item_id, cant)
                 item_nombre = ITEMS.get(item_id, {}).get("nombre", item_id)
                 resultado_texto.append(f"  ➕ {item_nombre} x{cant}")
-
         elif evento["efecto"] == "daño":
             dano = evento["valor"]
             nueva_vida = max(jugador["vida"] - dano, 0)
             db.update_jugador(ctx.author.id, vida=nueva_vida)
             resultado_texto.append(f"  💔 Pierdes {dano} de vida. Vida restante: {nueva_vida}")
             jugador["vida"] = nueva_vida
-
         elif evento["efecto"] == "tapas":
             tapas = evento["valor"]
             db.update_jugador(ctx.author.id, tapas=jugador["tapas"] + tapas)
@@ -217,6 +287,19 @@ class Mapa(commands.Cog):
                     db.actualizar_progreso_mision(ctx.author.id, "recolectar_municion", recursos_encontrados["municion"])
             else:
                 resultado_texto.append("\n📭 No encontraste recursos en esta exploración.")
+
+        # ── Drop de mapa secreto ──────────────────────────────
+        if zona_id in DROPS_MAPAS_SECRETOS:
+            mapa_id, prob = DROPS_MAPAS_SECRETOS[zona_id]
+            # Solo cae si el jugador no lo tiene ya
+            if random.random() < prob and not self._jugador_tiene_item(jugador, mapa_id):
+                db.add_item_inventario(ctx.author.id, mapa_id)
+                item_mapa = ITEMS.get(mapa_id, {})
+                resultado_texto.append(
+                    f"\n🌟 **¡HALLAZGO SECRETO!** Encontraste {item_mapa.get('emoji','📜')} **{item_mapa.get('nombre','Mapa Secreto')}**\n"
+                    f"*{item_mapa.get('descripcion','')}*\n"
+                    f"Usa `!mapa` para ver la zona desbloqueada."
+                )
 
         # ── Posible encuentro con zombie ──────────────────────
         if zona["zombies"] and zona_id != "refugio" and jugador["vida"] > 0:
