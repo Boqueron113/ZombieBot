@@ -48,7 +48,14 @@ class Database:
             muertes INTEGER DEFAULT 0,
             inventario TEXT DEFAULT '{}',
             estado TEXT DEFAULT 'vivo',
-            creado_en TIMESTAMP DEFAULT NOW()
+            creado_en TIMESTAMP DEFAULT NOW(),
+            ultimo_sueno TIMESTAMP DEFAULT NULL,
+            cansancio INTEGER DEFAULT 0,
+            atrincherando INTEGER DEFAULT 0,
+            atrincherando_zona TEXT DEFAULT NULL,
+            atrincherando_inicio TIMESTAMP DEFAULT NULL,
+            entrenando INTEGER DEFAULT 0,
+            entrenando_inicio TIMESTAMP DEFAULT NULL
         );
 
         CREATE TABLE IF NOT EXISTS misiones (
@@ -107,7 +114,27 @@ class Database:
         );
         """)
         self._commit()
+        self._migrate()
         self._seed_misiones()
+
+    def _migrate(self):
+        """Añade columnas nuevas a tablas existentes sin romper datos ya guardados."""
+        cols = [
+            ("jugadores", "ultimo_sueno",        "TIMESTAMP DEFAULT NULL"),
+            ("jugadores", "cansancio",            "INTEGER DEFAULT 0"),
+            ("jugadores", "atrincherando",        "INTEGER DEFAULT 0"),
+            ("jugadores", "atrincherando_zona",   "TEXT DEFAULT NULL"),
+            ("jugadores", "atrincherando_inicio", "TIMESTAMP DEFAULT NULL"),
+            ("jugadores", "entrenando",           "INTEGER DEFAULT 0"),
+            ("jugadores", "entrenando_inicio",    "TIMESTAMP DEFAULT NULL"),
+        ]
+        c = self._cur()
+        for tabla, col, tipo in cols:
+            try:
+                c.execute(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}")
+                self._commit()
+            except Exception:
+                self.conn.rollback()
 
     def _seed_misiones(self):
         c = self._cur()
