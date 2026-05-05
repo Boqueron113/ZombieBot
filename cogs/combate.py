@@ -94,6 +94,11 @@ class Combate(commands.Cog):
             # ── ZOMBIE MUERTO ──────────────────────────────────
             self._clear_combate(ctx.author.id)
             db.update_jugador(ctx.author.id, kills=jugador["kills"] + 1, estado="vivo")
+            # Actualizar progreso misión NPC
+            npcs_cog = self.bot.get_cog("NPCs")
+            if npcs_cog:
+                npcs_cog.actualizar_progreso_npc(ctx.author.id, "kill",
+                    zona=jugador["zona"], zombie_id=zombie_id)
 
             # Recompensas
             tapas_ganadas = random.randint(*zombie_data["tapas"])
@@ -276,7 +281,7 @@ class Combate(commands.Cog):
 
     @commands.command(name="revivir")
     async def revivir(self, ctx):
-        """Revive en el refugio (cuesta 100 tapas)"""
+        """Revive en el refugio. 100 tapas o gratis con penalizacion."""
         db = self.bot.db
         jugador = db.get_jugador(ctx.author.id)
 
@@ -289,26 +294,53 @@ class Combate(commands.Cog):
             return
 
         costo = 100
-        if jugador["tapas"] < costo:
-            await ctx.send(f"❌ Necesitas **{costo} tapas** para revivir. Tienes **{jugador['tapas']}**.")
-            return
+        tiene_tapas = jugador["tapas"] >= costo
 
-        nuevas_tapas = jugador["tapas"] - costo
-        vida_inicial = jugador["vida_max"] // 2
-        db.update_jugador(ctx.author.id, estado="vivo", vida=vida_inicial, tapas=nuevas_tapas, zona="refugio")
+        if tiene_tapas:
+            nuevas_tapas = jugador["tapas"] - costo
+            vida_inicial = jugador["vida_max"] // 2
+            db.update_jugador(ctx.author.id,
+                estado="vivo", vida=vida_inicial,
+                tapas=nuevas_tapas, zona="refugio"
+            )
+            embed = discord.Embed(
+                title="💉 Has revivido",
+                description=(
+                    "El médico del refugio te remienda como puede.\n\n"
+                    "❤️ Vida recuperada: **" + str(vida_inicial) + "/" + str(jugador["vida_max"]) + "**\n"
+                    "💰 Tapas pagadas: **" + str(costo) + "** (te quedan " + str(nuevas_tapas) + ")\n"
+                    "📍 Estás en: **Refugio Central**"
+                ),
+                color=0x27ae60
+            )
+        else:
+            vida_inicial = max(1, jugador["vida_max"] // 4)
+            inv = jugador["inventario"]
+            inv_penalizado = {k: max(1, v // 2) for k, v in inv.items()}
+            items_perdidos = {k: v - inv_penalizado[k] for k, v in inv.items() if v - inv_penalizado[k] > 0}
+            db.update_jugador(ctx.author.id,
+                estado="vivo", vida=vida_inicial,
+                zona="refugio", inventario=inv_penalizado
+            )
+            perdidos_txt = ""
+            if items_perdidos:
+                nombres = [ITEMS.get(k, {}).get("nombre", k) + " x" + str(v) for k, v in items_perdidos.items()]
+                perdidos_txt = "\n📦 Items perdidos: " + ", ".join(nombres)
+            embed = discord.Embed(
+                title="💀 Revivido en deuda",
+                description=(
+                    "No tienes tapas. Un superviviente te arrastra de vuelta... a un precio.\n\n"
+                    "❤️ Vida: **" + str(vida_inicial) + "/" + str(jugador["vida_max"]) + "** (solo 25%)\n"
+                    "💰 Tapas: **0**" + perdidos_txt + "\n\n"
+                    "📍 Estás en: **Refugio Central**\n"
+                    "*La próxima vez ten al menos 100 tapas antes de morir.*"
+                ),
+                color=0xe67e22
+            )
 
-        embed = discord.Embed(
-            title="💉 Has revivido",
-            description=(
-                f"El médico del refugio te devuelve a la vida.\n\n"
-                f"❤️ Vida recuperada: **{vida_inicial}/{jugador['vida_max']}**\n"
-                f"💰 Tapas restantes: **{nuevas_tapas}**\n"
-                f"📍 Estás en: **Refugio Central**"
-            ),
-            color=0x27ae60
-        )
         await ctx.send(embed=embed)
 
+    
     def _barra(self, actual, maximo, longitud=8):
         lleno = int((actual / maximo) * longitud)
         return "🟥" * lleno + "⬛" * (longitud - lleno)
