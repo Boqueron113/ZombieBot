@@ -1266,12 +1266,22 @@ async function cargarInventario() {
     if (!vendibles.length) { grid.innerHTML = '<div class="empty-msg">No tienes items vendibles.</div>'; return; }
     grid.innerHTML = vendibles.map(([id,cant]) => {
       const info = window.ITEMS_INFO[id];
-      return '<div class="item-card"><span class="item-id">'+id+'</span><span class="emoji">'+info.emoji+'</span><div class="nombre">'+info.nombre+'</div><div class="desc">Tienes: <strong>'+cant+'</strong> | '+info.precio_venta+'💰/u</div><div class="precio-row"><span class="precio">+'+info.precio_venta*cant+'💰</span><button class="btn-accion btn-verde" onclick="vender(''+id+'',''+info.nombre+'','+info.precio_venta+')">VENDER 1</button></div></div>';
+      return `<div class="item-card"><span class="item-id">${id}</span><span class="emoji">${info.emoji}</span><div class="nombre">${info.nombre}</div><div class="desc">Tienes: <strong>${cant}</strong> | ${info.precio_venta}💰/u</div><div class="precio-row"><span class="precio">+${info.precio_venta*cant}💰</span><button class="btn-accion btn-verde" data-item="${id}" data-precio="${info.precio_venta}">VENDER 1</button></div></div>`;
     }).join('');
+    // Attach click listeners
+    grid.querySelectorAll('.btn-verde').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const itemId = btn.dataset.item;
+        const precio = parseInt(btn.dataset.precio);
+        const info = window.ITEMS_INFO[itemId];
+        vender(itemId, info.nombre, precio, btn);
+      });
+    });
   } catch(e) { grid.innerHTML = '<div class="empty-msg">Error de conexión</div>'; }
 }
-async function vender(itemId, nombre, precio) {
-  const btn = event.target; btn.disabled = true; btn.textContent = '...';
+async function vender(itemId, nombre, precio, btn) {
+  if (!btn) btn = event.target;
+  btn.disabled = true; btn.textContent = '...';
   try {
     const r = await fetch('/api/vender', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,item_id:itemId,cantidad:1})});
     const d = await r.json();
