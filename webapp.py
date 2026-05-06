@@ -943,6 +943,18 @@ def tienda_auth(token):
     nombre = jugador["nombre"] if jugador else "Superviviente"
     zona = jugador["zona"] if jugador else "?"
 
+    # Build items_info for JS sell panel
+    from game_data import ITEMS as ALL_ITEMS
+    items_info = {
+        item_id: {
+            "emoji": item.get("emoji", "📦"),
+            "nombre": item.get("nombre", item_id),
+            "precio_venta": item.get("precio_venta", 0),
+        }
+        for item_id, item in ALL_ITEMS.items()
+        if item.get("precio_venta", 0) > 0
+    }
+
     return render_template_string(
         TIENDA_AUTH_HTML,
         categorias=categorias,
@@ -951,6 +963,7 @@ def tienda_auth(token):
         zona=zona,
         token=token,
         puede_comprar=(zona == "refugio"),
+        items_info=items_info,
     )
 
 
@@ -1007,6 +1020,79 @@ def api_comprar():
     })
 
 
+
+@app.route('/api/vender', methods=['POST'])
+def api_vender():
+    """API para vender desde la web."""
+    from flask import request, jsonify
+    from game_data import ITEMS
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"ok": False, "error": "Datos inválidos"}), 400
+
+    token = data.get("token", "")
+    item_id = data.get("item_id", "").lower()
+    cantidad = int(data.get("cantidad", 1))
+
+    discord_id = validar_token(token)
+    if not discord_id:
+        return jsonify({"ok": False, "error": "Token inválido o expirado"}), 403
+
+    if not _db:
+        return jsonify({"ok": False, "error": "Base de datos no disponible"}), 503
+
+    jugador = _db.get_jugador(discord_id)
+    if not jugador:
+        return jsonify({"ok": False, "error": "Jugador no encontrado"}), 404
+
+    if jugador["zona"] != "refugio":
+        return jsonify({"ok": False, "error": "Solo puedes vender en el Refugio Central"}), 400
+
+    item = ITEMS.get(item_id)
+    if not item:
+        return jsonify({"ok": False, "error": "Item no encontrado"}), 400
+
+    precio_venta = item.get("precio_venta", 0)
+    if precio_venta == 0:
+        return jsonify({"ok": False, "error": "Este item no tiene valor de venta"}), 400
+
+    if jugador["inventario"].get(item_id, 0) < cantidad:
+        return jsonify({"ok": False, "error": f"No tienes suficiente {item.get('nombre', item_id)}"}), 400
+
+    _db.remove_item_inventario(discord_id, item_id, cantidad)
+    ganancia = precio_venta * cantidad
+    _db.update_jugador(discord_id, tapas=jugador["tapas"] + ganancia)
+
+    jugador_nuevo = _db.get_jugador(discord_id)
+    return jsonify({
+        "ok": True,
+        "mensaje": f"Vendiste {item.get('nombre', item_id)} x{cantidad} por {ganancia} tapas",
+        "tapas_restantes": jugador_nuevo["tapas"],
+    })
+
+
+
+@app.route('/api/inventario/<token>')
+def api_inventario(token):
+    """Devuelve el inventario del jugador autenticado."""
+    from flask import jsonify
+    from game_data import ITEMS
+
+    discord_id = validar_token(token)
+    if not discord_id:
+        return jsonify({"ok": False, "error": "Token inválido"}), 403
+
+    if not _db:
+        return jsonify({"ok": False, "error": "DB no disponible"}), 503
+
+    jugador = _db.get_jugador(discord_id)
+    if not jugador:
+        return jsonify({"ok": False, "error": "Jugador no encontrado"}), 404
+
+    return jsonify({"ok": True, "inventario": jugador["inventario"]})
+
+
 @app.route('/api/jugador/<discord_id>')
 def api_jugador(discord_id):
     """API JSON para el jugador (uso interno)."""
@@ -1057,6 +1143,9 @@ TIENDA_AUTH_HTML = r"""<!DOCTYPE html>
   .search-bar{padding:.75rem 1.5rem;background:#111;border-bottom:1px solid #333;display:flex;gap:.5rem;flex-wrap:wrap}
   .search-bar input{background:#1a1a1a;border:1px solid #444;color:var(--texto);padding:.45rem .9rem;border-radius:6px;font-family:'Share Tech Mono',monospace;font-size:.8rem;flex:1;min-width:160px}
   .search-bar input:focus{outline:none;border-color:var(--rojo)}
+  .tab-main{background:var(--gris-mid);border:1px solid #444;color:var(--texto-dim);padding:.4rem 1.1rem;border-radius:6px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:.9rem;letter-spacing:.1em;transition:all .15s}
+  .tab-main.active{background:var(--rojo);color:#fff;border-color:var(--rojo)}
+  .tab-main:hover{background:var(--rojo);color:#fff;border-color:var(--rojo)}
   .filter-btn{background:var(--gris-mid);border:1px solid #444;color:var(--texto-dim);padding:.35rem .8rem;border-radius:6px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:.8rem;letter-spacing:.1em;transition:all .15s}
   .filter-btn.active,.filter-btn:hover{background:var(--rojo);color:#fff;border-color:var(--rojo)}
   .content{padding:1rem 1.5rem;max-width:1200px;margin:0 auto}
@@ -1131,12 +1220,20 @@ TIENDA_AUTH_HTML = r"""<!DOCTYPE html>
 {% endfor %}
 </div>
 
+<!-- Panel vender -->
+<div id="panel-vender" style="display:none">
+  <div class="cat-title">💸 TU INVENTARIO — Selecciona items para vender</div>
+  <div id="inv-grid" class="items-grid"></div>
+</div>
+
 <div id="toast"></div>
 <div class="footer">APOCALIPSIS ZOMBIE • Sesión expira en 15 min • Recarga la página si expira</div>
 
 <script>
 const TOKEN = "{{ token }}";
 let tapasActuales = {{ tapas }};
+// Items info para el panel de venta
+window.ITEMS_INFO = {{ items_info | tojson }};
 
 async function comprar(itemId, nombre, precio) {
   if(tapasActuales < precio) {
@@ -1187,6 +1284,98 @@ function filtrar() {
     const h = document.querySelector('.cat-hdr[data-cat="' + g.dataset.cat + '"]');
     if(h) h.classList.toggle('hidden', !vis);
   });
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+let tabActual = 'comprar';
+function setTab(tab, btn) {
+  tabActual = tab;
+  document.querySelectorAll('.tab-main').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const panelComprar = document.querySelector('.content > div:not(#panel-vender):not(#toast)');
+  const panelVender = document.getElementById('panel-vender');
+  const cats = document.querySelectorAll('.cat-hdr, .cat-grid');
+  const searchBar = document.querySelectorAll('.filter-btn, #search');
+
+  if (tab === 'comprar') {
+    cats.forEach(el => el.style.display = '');
+    panelVender.style.display = 'none';
+    searchBar.forEach(el => el.style.display = '');
+    filtrar();
+  } else {
+    cats.forEach(el => el.style.display = 'none');
+    panelVender.style.display = 'block';
+    searchBar.forEach(el => el.style.display = 'none');
+    cargarInventario();
+  }
+}
+
+// ── INVENTARIO Y VENTA ────────────────────────────────────────────────────────
+async function cargarInventario() {
+  const grid = document.getElementById('inv-grid');
+  grid.innerHTML = '<div style="color:var(--texto-dim);font-family:Share Tech Mono,monospace;font-size:.8rem;padding:1rem">Cargando inventario...</div>';
+
+  try {
+    const r = await fetch('/api/jugador/' + TOKEN.split('_')[0]);
+    // Use token to get player data
+    const r2 = await fetch('/api/inventario/' + TOKEN);
+    if (!r2.ok) { grid.innerHTML = '<div style="color:var(--rojo)">Error al cargar inventario</div>'; return; }
+    const data = await r2.json();
+    renderInventario(data.inventario);
+  } catch(e) {
+    grid.innerHTML = '<div style="color:var(--rojo)">Error de conexión</div>';
+  }
+}
+
+function renderInventario(inventario) {
+  const grid = document.getElementById('inv-grid');
+  if (!inventario || Object.keys(inventario).length === 0) {
+    grid.innerHTML = '<div style="color:var(--texto-dim);font-family:Share Tech Mono,monospace;padding:1rem">Inventario vacío</div>';
+    return;
+  }
+  grid.innerHTML = Object.entries(inventario).map(([id, cant]) => {
+    if (id.endsWith('_dur') || cant <= 0) return '';
+    const info = window.ITEMS_INFO[id] || {emoji:'📦', nombre:id, precio_venta:0};
+    if (!info.precio_venta) return '';
+    return `<div class="item-card">
+      <span class="item-id">${id}</span>
+      <span class="emoji">${info.emoji}</span>
+      <div class="nombre">${info.nombre}</div>
+      <div class="desc">Tienes: <strong>${cant}</strong> unidades</div>
+      <div class="precio-row">
+        <span class="precio">${info.precio_venta}💰/u</span>
+        <button class="btn-comprar" onclick="vender('${id}','${info.nombre}',${info.precio_venta},${cant})">VENDER</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function vender(itemId, nombre, precio, cantMax) {
+  if (cantMax <= 0) { showToast('❌ No tienes ese item', true); return; }
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const r = await fetch('/api/vender', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({token: TOKEN, item_id: itemId, cantidad: 1})
+    });
+    const data = await r.json();
+    if (data.ok) {
+      tapasActuales = data.tapas_restantes;
+      document.getElementById('tapas-display').textContent = '💰 ' + tapasActuales + ' tapas';
+      showToast('✅ ' + data.mensaje);
+      setTimeout(cargarInventario, 500);
+    } else {
+      showToast('❌ ' + data.error, true);
+    }
+  } catch(e) {
+    showToast('❌ Error de conexión', true);
+  }
+  btn.disabled = false;
+  btn.textContent = 'VENDER';
 }
 
 let toastTimer;
