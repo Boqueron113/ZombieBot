@@ -1292,21 +1292,18 @@ function setTab(tab, btn) {
   tabActual = tab;
   document.querySelectorAll('.tab-main').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-
-  const panelComprar = document.querySelector('.content > div:not(#panel-vender):not(#toast)');
   const panelVender = document.getElementById('panel-vender');
   const cats = document.querySelectorAll('.cat-hdr, .cat-grid');
-  const searchBar = document.querySelectorAll('.filter-btn, #search');
-
+  const filters = document.querySelectorAll('.filter-btn, #search');
   if (tab === 'comprar') {
-    cats.forEach(el => el.style.display = '');
+    cats.forEach(el => el.style.removeProperty('display'));
     panelVender.style.display = 'none';
-    searchBar.forEach(el => el.style.display = '');
+    filters.forEach(el => el.style.removeProperty('display'));
     filtrar();
   } else {
     cats.forEach(el => el.style.display = 'none');
     panelVender.style.display = 'block';
-    searchBar.forEach(el => el.style.display = 'none');
+    filters.forEach(el => el.style.display = 'none');
     cargarInventario();
   }
 }
@@ -1315,13 +1312,11 @@ function setTab(tab, btn) {
 async function cargarInventario() {
   const grid = document.getElementById('inv-grid');
   grid.innerHTML = '<div style="color:var(--texto-dim);font-family:Share Tech Mono,monospace;font-size:.8rem;padding:1rem">Cargando inventario...</div>';
-
   try {
-    const r = await fetch('/api/jugador/' + TOKEN.split('_')[0]);
-    // Use token to get player data
-    const r2 = await fetch('/api/inventario/' + TOKEN);
-    if (!r2.ok) { grid.innerHTML = '<div style="color:var(--rojo)">Error al cargar inventario</div>'; return; }
-    const data = await r2.json();
+    const r = await fetch('/api/inventario/' + TOKEN);
+    if (!r.ok) { grid.innerHTML = '<div style="color:var(--rojo)">Error al cargar inventario</div>'; return; }
+    const data = await r.json();
+    if (!data.ok) { grid.innerHTML = '<div style="color:var(--rojo)">' + data.error + '</div>'; return; }
     renderInventario(data.inventario);
   } catch(e) {
     grid.innerHTML = '<div style="color:var(--rojo)">Error de conexión</div>';
