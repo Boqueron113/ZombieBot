@@ -631,7 +631,7 @@ def index():
 
 
 def run_webapp():
-    port = int(os.environ.get('WEB_PORT', 8080))
+    port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False)
 
 
