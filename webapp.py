@@ -1140,11 +1140,11 @@ TIENDA_AUTH_HTML = r"""<!DOCTYPE html>
   .tapas{color:var(--oro);font-size:1.1rem;font-weight:bold}
   .zona-ok{color:var(--verde);font-size:.7rem;margin-top:2px}
   .zona-no{color:var(--rojo);font-size:.7rem;margin-top:2px}
-  .tabs{display:flex;background:#0d0d0d;border-bottom:1px solid #333}
-  .tab-btn{padding:.9rem 2rem;background:none;border:none;border-bottom:3px solid transparent;color:var(--texto-dim);font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.15em;cursor:pointer;transition:all .2s}
+  .tabs{display:flex;background:#0d0d0d;border-bottom:1px solid #333;position:relative;z-index:10}
+  .tab-btn{padding:.9rem 2rem;background:none;border:none;border-bottom:3px solid transparent;color:var(--texto-dim);font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.15em;cursor:pointer;transition:all .2s;position:relative;z-index:10;pointer-events:auto}
   .tab-btn:hover{color:var(--texto)}
   .tab-btn.active{color:var(--rojo);border-bottom-color:var(--rojo)}
-  .toolbar{padding:.75rem 1.5rem;background:#111;border-bottom:1px solid #333;display:flex;gap:.5rem;flex-wrap:wrap}
+  .toolbar{padding:.75rem 1.5rem;background:#111;border-bottom:1px solid #333;display:flex;gap:.5rem;flex-wrap:wrap;position:relative;z-index:1}
   .toolbar input{background:#1a1a1a;border:1px solid #444;color:var(--texto);padding:.45rem .9rem;border-radius:6px;font-family:'Share Tech Mono',monospace;font-size:.8rem;flex:1;min-width:160px}
   .toolbar input:focus{outline:none;border-color:var(--rojo)}
   .filter-btn{background:var(--gris-mid);border:1px solid #444;color:var(--texto-dim);padding:.35rem .8rem;border-radius:6px;cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:.8rem;letter-spacing:.1em;transition:all .15s}
