@@ -854,56 +854,6 @@ def perfil(discord_id):
         estructuras=estructuras_render,
     )
 
-@app.route('/tienda/<discord_id>')
-def tienda(discord_id):
-    if not _db:
-        abort(503)
-    jugador = _db.get_jugador(discord_id)
-    if not jugador:
-        abort(404)
-
-    from game_data import ITEMS, TIENDA_ITEMS
-
-    cats = {
-        "consumible": ("💊", "Consumibles"),
-        "arma":       ("⚔️", "Armas"),
-        "armadura":   ("🛡️", "Armaduras"),
-        "material":   ("🔧", "Materiales"),
-        "equipamiento":("🗃️","Equipamiento"),
-        "droga":      ("💉", "Drogas"),
-        "gadget":     ("📡", "Gadgets"),
-        "vehiculo":   ("🚗", "Vehículos"),
-        "accesorio":  ("👢", "Accesorios"),
-    }
-
-    items_por_cat = {k: [] for k in cats}
-    for item_id in TIENDA_ITEMS:
-        item = ITEMS.get(item_id)
-        if not item:
-            continue
-        tipo = item.get("tipo", "otro")
-        if tipo in items_por_cat:
-            tiene = jugador["inventario"].get(item_id, 0)
-            items_por_cat[tipo].append({
-                "id": item_id,
-                "nombre": item.get("nombre", item_id),
-                "emoji": item.get("emoji", "📦"),
-                "descripcion": item.get("descripcion", ""),
-                "precio_compra": item.get("precio_compra", 0),
-                "precio_venta": item.get("precio_venta", 0),
-                "tiene": tiene,
-            })
-
-    return render_template_string(HTML_TIENDA,
-        nombre=jugador["nombre"],
-        tapas=jugador["tapas"],
-        nivel=jugador["nivel"],
-        discord_id=discord_id,
-        items_por_cat=items_por_cat,
-        cats=cats,
-    )
-
-
 
 @app.route('/tienda')
 def tienda():
