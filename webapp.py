@@ -1311,3 +1311,13 @@ function showToast(msg, isError=false) {
 </html>
 """
 
+
+
+def run_webapp():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
+
+def start_in_thread():
+    t = threading.Thread(target=run_webapp, daemon=True)
+    t.start()
