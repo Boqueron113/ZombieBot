@@ -146,28 +146,6 @@ async def perfil_web(ctx):
 
 
 
-@bot.command(name="perfil_web", aliases=["web", "ficha"])
-async def perfil_web(ctx):
-    jugador = bot.db.get_jugador(ctx.author.id)
-    if not jugador:
-        await ctx.send("Usa !crear para comenzar.")
-        return
-    raw_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "localhost:8080")
-    if raw_domain.startswith("http"):
-        base_url = raw_domain
-    else:
-        base_url = "https://" + raw_domain
-    url = base_url + "/perfil/" + str(ctx.author.id)
-    nombre = jugador["nombre"]
-    nivel = str(jugador["nivel"])
-    embed = discord.Embed(
-        title="🌐 Ficha de superviviente",
-        description=nombre + " — Nivel " + nivel + "\n\n[Ver ficha en el navegador](" + url + ")\n\nMuestra tu perfil, inventario, mapa y base en tiempo real.",
-        color=0x2d5a1b
-    )
-    embed.set_footer(text="La pagina se actualiza cada vez que la abres.")
-    await ctx.send(embed=embed)
-
 
 async def main():
     async with bot:
